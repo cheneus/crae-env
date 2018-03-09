@@ -1,32 +1,75 @@
-import bodyParser from 'body-parser'
-import express from 'express'
-import path from 'path'
+const express = require('express')
+const bodyParser = require('body-parser')
+const logger = require('morgan')
+const mongoose = require('mongoose')
+const passport = require('./passport')
+const cookieParser = require('cookie-parser');
+
+// env config
+const env = process.env.NODE_ENV || 'development'
+const PORT = process.env.PORT || 5000
+
+// Initialize Express
 const app = express()
+const profileRouter = require('./route/profileRouter')
+// const productRouter = require('./route/productRouter')
+const authRouter = require('./route/authRouter')
+// const apiRoutes = require('./routes/api');
 
+// passport Strategy
+const localSignupStrategy = require('./passport/local-signup');
+const localLoginStrategy = require('./passport/local-login');
+// const localStrategy = require('./passport/localStrategy')
+// Use morgan logger for logging requests
+app.use(logger('dev'))
+// Use body-parser for handling form submissions
+app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
-app.use(bodyParser.urlencoded({extended: false}))
+app.use(cookieParser());
+// Use express.static to serve the public folder as a static directory
+// app.use(express.static("public/js"));
+if (process.env.NODE_ENV === 'production') {
+	const path = require('path')
+	console.log('YOU ARE IN THE PRODUCTION ENV')
+	app.use('/static', express.static(path.join(__dirname, '../build/static')))
+	app.get('/', (req, res) => {
+		res.sendFile(path.join(__dirname, '../build/'))
+	})
+} else {
+	app.use(express.static('client/public'))
+}
+app.use(express.static('public'))
 
-const router = express.Router()
+// database
+const connection = process.env.MONGODB_URI || 'mongodb://localhost/travel'
 
-const staticFiles = express.static(path.join(__dirname, '../../client/build'))
-app.use(staticFiles)
+mongoose.connect(connection, { useMongoClient: true },
+	(err) => {
+		if (err) throw err
+	})
 
-router.get('/cities', (req, res) => {
-  console.log(`reading this from env > ${process.env.MY_VARIABLE}`)
-  const cities = [
-    {name: 'New York City', population: 8175133},
-    {name: 'Los Angeles',   population: 3792621},
-    {name: 'Chicago',       population: 2695598}
-  ]
-  res.json(cities)
+// Configure middleware
+// ===== Passport ====
+app.use(passport.initialize())
+app.use(passport.session())
+
+// passport.use('local-signup', localSignupStrategy);
+// passport.use('local-login', localLoginStrategy);
+// passport.use('local', localStrategy);
+
+// pass the authenticaion checker middleware
+const authCheckMiddleware = require('./middleware/auth-check');
+app.use('/api', authCheckMiddleware);
+
+// app.use('/', htmlRouter)
+app.use('/profile', profileRouter)
+app.use('/auth', authRouter)
+
+// to prove express is working
+app.get('/api/hello', (req, res) => {
+	res.json({ express: 'Hello From Express' })
 })
 
-app.use(router)
-
-// any routes not picked up by the server api will be handled by the react router
-app.use('/*', staticFiles)
-
-app.set('port', (process.env.PORT || 3001))
-app.listen(app.get('port'), () => {
-  console.log(`Listening on ${app.get('port')}`)
+app.listen(PORT, () => {
+	console.log(`Server running on port ${env} , ${PORT}`)
 })
